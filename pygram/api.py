@@ -1,13 +1,16 @@
 #!coding:utf-8
 
+from datetime import datetime
+import itertools
+import cookielib
 import requests
+import atexit
+import signal
+import pickle
 import random
 import time
 import json
-import atexit
-import signal
-import itertools
-
+import os
 
 class LoginException(Exception):
     pass
@@ -36,6 +39,7 @@ class PyGram(object):
     media_by_tag = 0
     login_status = False
     s = requests.Session()
+    is_logged = False
 
     url = 'https://www.instagram.com/'
     url_tag = 'https://www.instagram.com/explore/tags/%s/'
@@ -53,7 +57,16 @@ class PyGram(object):
         """Initialize the api."""
         self.user_login = login.lower()
         self.user_password = password
-        self.login()
+
+        self.s = self.get_session()
+        if not self.is_logged:
+            self.login()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.persist_session()
 
     def login(self):
         """Login on the instagram platform."""
@@ -89,6 +102,7 @@ class PyGram(object):
             finder = r.text.find(self.user_login)
             if finder != -1:
                 self.user = User(self.get_user_id_by_login(self.user_login))
+                self.is_logged = True
             else:
                 raise InvalidDataException
         else:
@@ -102,6 +116,36 @@ class PyGram(object):
         if request.status_code == 200:
             return True
         return False
+
+    def get_session_filename(self):
+        dir = '/tmp/pygram-sessions'
+        os.system('mkdir -p %s' % dir)
+        filename = os.path.join(dir, datetime.now().strftime("%Y%m%d"))
+        return filename
+
+    def get_session(self):
+        filename = self.get_session_filename()
+        if os.path.exists(filename):
+            session = requests.session()
+            session.cookies = cookielib.LWPCookieJar(filename=filename)
+            session.cookies.load()
+
+            r = session.get(self.url)
+            session.headers.update({'X-CSRFToken': r.cookies['csrftoken']})
+
+            self.is_logged = True
+            return session
+
+        return requests.Session()
+
+    def persist_session(self):
+        filename = self.get_session_filename()
+        if not os.path.exists(filename):
+            jar = cookielib.LWPCookieJar(filename=filename)
+            for c in self.s.cookies:
+                print c
+                jar.set_cookie(c)
+            jar.save(ignore_discard=True)
 
     def get_user_id_by_login(self, user_name):
         url_info = self.url_user_detail % (user_name)
