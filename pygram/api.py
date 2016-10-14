@@ -35,7 +35,6 @@ class PyGram(object):
     user_id = 0
     media_by_tag = 0
     login_status = False
-    s = requests.Session()
 
     url = 'https://www.instagram.com/'
     url_tag = 'https://www.instagram.com/explore/tags/%s/?__a=1'
@@ -53,6 +52,7 @@ class PyGram(object):
         """Initialize the api."""
         self.user_login = login.lower()
         self.user_password = password
+        self.s = requests.Session()
 
     def login(self):
 
