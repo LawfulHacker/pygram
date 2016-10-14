@@ -38,7 +38,7 @@ class PyGram(object):
     s = requests.Session()
 
     url = 'https://www.instagram.com/'
-    url_tag = 'https://www.instagram.com/explore/tags/%s/'
+    url_tag = 'https://www.instagram.com/explore/tags/%s/?__a=1'
     url_likes = 'https://www.instagram.com/web/likes/%s/like/'
     url_unlike = 'https://www.instagram.com/web/likes/%s/unlike/'
     url_comment = 'https://www.instagram.com/web/comments/%s/add/'
@@ -53,9 +53,12 @@ class PyGram(object):
         """Initialize the api."""
         self.user_login = login.lower()
         self.user_password = password
-        self.login()
 
     def login(self):
+
+        if self.login_status:
+            return True
+
         """Login on the instagram platform."""
         self.s.cookies.update({'sessionid': '', 'mid': '', 'ig_pr': '1',
                                'ig_vw': '1920', 'csrftoken': '',
@@ -88,8 +91,11 @@ class PyGram(object):
             r = self.s.get('https://www.instagram.com/')
             finder = r.text.find(self.user_login)
             if finder != -1:
-                self.user = User(self.get_user_id_by_login(self.user_login))
+                self.user = self.get_user_id_by_login(self.user_login)
+                self.login_status = True
+                return self.login_status
             else:
+                print (r.text)
                 raise InvalidDataException
         else:
             raise LoginException
@@ -110,35 +116,51 @@ class PyGram(object):
         id_user = all_data['user']['id']
         return id_user
 
-    def get_medias_by_tag(self, tag):
+    def get_medias_to_collect_by_tags(self, tags, *args, **kwargs):
+        tag = random.choice(tags)
+        return self.get_medias_to_collect_by_tag(tag, *args, **kwargs)
+
+    def get_medias_to_collect_by_tag(self, tag, total=None, min_likes=None, max_likes=None):
         """Get media ID set, by your hashtag."""
         url_tag = self.url_tag % tag
         r = self.s.get(url_tag)
-        text = r.text
 
-        finder_text_start = ('<script type="text/javascript">window._sharedData = ')
-        finder_text_start_len = len(finder_text_start) - 1
-        finder_text_end = ';</script>'
+        medias = []
+        for media in r.json()['tag']['top_posts']['nodes'] + r.json()['tag']['media']['nodes']:
+            if 'code' in media.keys():
+                media = self.s.get(self.url_media_detail % (media['code']))
+                media = media.json()['media']
+                if 'code' in media.keys():
 
-        all_data_start = text.find(finder_text_start)
-        all_data_end = text.find(finder_text_end, all_data_start + 1)
-        json_str = text[(all_data_start + finder_text_start_len + 1):all_data_end]
-        all_data = json.loads(json_str)
+                    media = Media(media)
+                    if len(medias) >= total:
+                        break
 
-        return [Media(item) for item in list(all_data['entry_data']['TagPage'][0]['tag']['media']['nodes'])]
+                    # se a midia tiver menos que o configurado, passa
+                    if min_likes and media.likes['count'] < min_likes:
+                        continue
 
-    def like(self, media):
+                    # se a midia tiver mais que o configurado, passa
+                    if max_likes and media.likes['count'] > max_likes:
+                        continue
+
+                    medias.append(media)
+
+        return medias
+
+    def like(self, media_id):
         """Send http request to like media by object."""
-        url_likes = self.url_likes % (media.id)
-        request = self.s.post(url_likes)
+        if self.login():
+            url_likes = self.url_likes % (media_id)
+            request = self.s.post(url_likes)
 
-        if request.status_code == 200:
-            return True
+            if request.status_code == 200:
+                return True
         return False
 
-    def unlike(self, media):
+    def unlike(self, media_id):
         """Send http request to unlike media by ID."""
-        url_unlike = self.url_unlike % (media.id)
+        url_unlike = self.url_unlike % (media_id)
         request = self.s.post(url_unlike)
 
         if request.status_code == 200:
@@ -174,9 +196,9 @@ class Base(object):
 
 class Media(Base):
 
-    def __init__(self, dic, *args, **kwargs):
-        dic['owner'] = User(dic['owner'])
-        super(Media, self).__init__(dic, *args, **kwargs)
+    # def __init__(self, dic, *args, **kwargs):
+    #     dic['owner'] = User(dic['owner'])
+    #     super(Media, self).__init__(dic, *args, **kwargs)
 
     @property
     def url(self):
@@ -187,5 +209,5 @@ class User(Base):
 
     url_user_detail = 'https://www.instagram.com/%s/?__a=1'
 
-    def __init__(self, dic, *args, **kwargs):
-        super(User, self).__init__(dic, *args, **kwargs)
+    # def __init__(self, dic, *args, **kwargs):
+    #     super(User, self).__init__(dic, *args, **kwargs)
