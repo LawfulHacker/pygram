@@ -167,9 +167,9 @@ class PyGram(object):
             return True
         return False
 
-    def follow(self, user):
+    def follow(self, user_id):
         """Send http request to follow."""
-        url_follow = self.url_follow % (user.id)
+        url_follow = self.url_follow % (user_id)
         request = self.s.post(url_follow)
 
         if request.status_code == 200:
